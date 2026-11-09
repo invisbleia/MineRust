@@ -93,10 +93,14 @@ Multiplayer is explicitly out of scope for this project.
   formats do not change: regions, NBT, level.dat land in OPFS paths shaped
   like game folders. Worlds persist per site origin; clearing site data
   clears them (the UI says so, once).
-- **Assets:** the site serves the prepared pack as an archive plus a
-  manifest; first launch fetches it once (progress screen), caches it in
-  Cache Storage, and every later launch reads it through the same VFS shim.
-  Pack builds are not committed to either repository.
+- **Assets — the operator chose public serving:** the site serves the
+  prepared pack to every visitor, Eaglercraft-style: one-time download with
+  a progress screen, cached in Cache Storage, read through the same VFS
+  shim. The pack is built on the operator's machine (`horizon-prepare`),
+  measured in slice 1, and uploaded by a small script (never git); the
+  manifest pins the pack version to the wasm build. If the pack exceeds
+  Vercel's static-file limits, it parks in Vercel Blob behind the same
+  manifest.
 - **Threads:** wasm atomics + threads behind a feature; the site serves
   COOP/COEP so SharedArrayBuffer works. The server thread stays a real
   thread; the streaming worker pool scales down on web. If a subsystem
@@ -104,9 +108,13 @@ Multiplayer is explicitly out of scope for this project.
   first and notes it in the plan.
 - **Audio:** enable the game's existing `audio` feature with cpal's web
   backend.
-- **Hosting:** Cloudflare Pages under the MineRust site, `_headers` for
-  COOP/COEP and correct MIME for `.wasm`; a WebGPU-capability gate page for
-  unsupported browsers.
+- **Hosting: Vercel.** Custom headers in `vercel.json` provide COOP/COEP
+  (threads) and `.wasm` MIME; a WebGPU-capability gate page covers
+  unsupported browsers. The game runs locally for now (a dev server with the
+  same headers); no permanent public address exists yet. Recorded warning:
+  browser saves are bound to the site's origin, so worlds made while testing
+  locally will not follow to the future public address — the final domain
+  must be picked before public launch.
 - **Order of work (each slice is shippable knowledge):**
   0. Spike, throwaway: compile the game's libraries for
      `wasm32-unknown-unknown` and light a canvas through wgpu/winit in a
@@ -117,6 +125,17 @@ Multiplayer is explicitly out of scope for this project.
   3. Save/load worlds in OPFS; options too.
   4. Audio, full-game polish, performance pass, the capability gate page.
 
+## Operator decisions (2026-11-09)
+
+- Game files are served publicly to visitors (the "a" option).
+- Hosting: Vercel; local testing first; the permanent address is decided
+  before public launch, not now.
+- Builder calls, in force unless vetoed: degraded-but-working visuals are
+  fine at launch — no WebGPU shader rework, and shader packs stay
+  desktop-only; the web menus hide controllers, the narrator, shader-pack
+  settings, and the multiplayer/Realms entries; MineRust ships as a live
+  site, not a hand-off bundle.
+
 ## Left to the builder
 
 - Exact wgpu feature set and target flags for wasm; the atomics build
@@ -124,4 +143,9 @@ Multiplayer is explicitly out of scope for this project.
 - How much of the client's rendering crate compiles unchanged (expected:
   most).
 - Worker pool sizing, rAF-driven tick pacing, and the asset-cache format.
+- The spike (throwaway) also answers: does the gameplay library compile for
+  wasm (it pulls `ureq`/`rustls`, `fs4` and friends that may need feature
+  gates); is cpal 0.16's Web Audio host usable; do winit 0.30.13's web
+  pointer-lock and IME cover mouse-look and chat; do the vendored
+  `third_party/wgpu-hal` and `naga` patches compile for the wasm target.
 - The spike's findings feed the plan; the spike itself is throwaway.
