@@ -9,6 +9,7 @@ use wasm_bindgen::prelude::*;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::platform::web::WindowAttributesExtWebSys;
 use winit::window::{Window, WindowId};
 
 struct Gpu {
@@ -53,8 +54,9 @@ impl App {
             let adapter = instance
                 .request_adapter(&wgpu::RequestAdapterOptions {
                     power_preference: wgpu::PowerPreference::HighPerformance,
-                    surface: Some(&surface),
-                    ..Default::default()
+                    force_fallback_adapter: false,
+                    compatible_surface: Some(&surface),
+                    apply_limit_buckets: false,
                 })
                 .await
                 .expect("WebGPU adapter — is this browser WebGPU-capable?");
@@ -76,6 +78,7 @@ impl App {
                     .first()
                     .copied()
                     .expect("surface formats"),
+                color_space: wgpu::SurfaceColorSpace::Auto,
                 width: size.width.max(1),
                 height: size.height.max(1),
                 present_mode: wgpu::PresentMode::AutoVsync,
@@ -107,8 +110,11 @@ impl ApplicationHandler for App {
             let Some(gpu) = state.gpu.as_ref() else {
                 return;
             };
-            let Ok(frame) = gpu.surface.get_current_texture() else {
-                return;
+            // wgpu 30 returns an enum, not a Result.
+            let frame = match gpu.surface.get_current_texture() {
+                wgpu::CurrentSurfaceTexture::Success(t)
+                | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+                _ => return,
             };
             let view = frame
                 .texture
@@ -116,37 +122,33 @@ impl ApplicationHandler for App {
             let mut encoder = gpu
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let clear = wgpu::Color {
+                r: 0.09,
+                g: 0.45,
+                b: 0.09,
+                a: 1.0,
+            };
             {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("spike clear"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
+                        depth_slice: None,
                         resolve_target: None,
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color {
-                                r: 0.09,
-                                g: 0.45,
-                                b: 0.09,
-                                a: 1.0,
-                            }),
+                            load: wgpu::LoadOp::Clear(clear),
                             store: wgpu::StoreOp::Store,
                         },
-                        depth_stencil_attachment: None,
-                        timestamp_writes: None,
                     })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
-                pass.clear_color(wgpu::Color {
-                    r: 0.09,
-                    g: 0.45,
-                    b: 0.09,
-                    a: 1.0,
-                });
+                drop(pass);
             }
             gpu.queue.submit([encoder.finish()]);
-            frame.present();
+            gpu.queue.present(frame);
         }
     }
 
@@ -163,12 +165,12 @@ impl ApplicationHandler for App {
 #[wasm_bindgen(start)]
 pub async fn run() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
-    let app = App {
+    let mut app = App {
         state: Rc::new(RefCell::new(State::default())),
         window: None,
     };
     let event_loop = EventLoop::new().map_err(|e| JsValue::from_str(&e.to_string()))?;
     event_loop
-        .run_app(app)
+        .run_app(&mut app)
         .map_err(|e| JsValue::from_str(&e.to_string()))
 }
