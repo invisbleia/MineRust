@@ -1,0 +1,20 @@
+[package]
+name = "spike"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Matched to the wasm-bindgen-cli installed for the bindgen step; wgpu 30
+# needs at least 0.2.127. Resolved as a lockstep pair by cargo.
+wasm-bindgen = "0.2"
+# wgpu 30 uses the 0.4 line: the 0.2 line stopped at 0.2.22 (which drags in
+# js-sys 0.2 and fails to compile).
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+# The game's own windowing and rendering stack, same versions.
+winit = "0.30.13"
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "webgpu", "wgsl"] }
+web-sys = { version = "0.3", features = ["console", "Document", "HtmlCanvasElement", "Window"] }
